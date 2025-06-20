@@ -48,7 +48,8 @@ def analiz_uret(match):
     except Exception as e:
         analiz = f"AI analizi alınamadı: {e}"
 
-    mesaj = f"\n\n📅 *{tarih}*
+    mesaj = f"\n\n📅 *{tarih}*\n"
+
 🏟️ *{home}* vs *{away}*\n\n{analiz}"
     return mesaj
 
