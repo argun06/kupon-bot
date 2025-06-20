@@ -1,83 +1,52 @@
-import os
-import requests
+import feedparser
+from datetime import datetime
 import time
-from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 from telegram import Bot
-from openai import OpenAI
+import os
 
-# Ortam degiskenlerini yukle
+# .env dosyasındaki API anahtarlarını kullanmak için:
+from dotenv import load_dotenv
 load_dotenv()
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
-openai = OpenAI(api_key=OPENAI_API_KEY)
-
-# Yeni kaynak: BettingTipsToday
-URL = "https://www.bettingtipstoday.com/todays-football-tips/"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-}
 
 def haberleri_cek():
-    response = requests.get(URL, headers=HEADERS, timeout=15)
-    soup = BeautifulSoup(response.text, "html.parser")
+    url = "https://www.ntvspor.net/rss.xml"
+    feed = feedparser.parse(url)
+    bugun = datetime.now().date()
+
     haberler = []
-
-    # Sitenin haber yapisi
-    cards = soup.select(".match-container")[:3]  # ilk 3 haber
-    for card in cards:
+    for entry in feed.entries:
         try:
-            takimlar = card.select_one(".match-teams").text.strip()
-            oran = card.select_one(".match-odds").text.strip()
-            link = "https://www.bettingtipstoday.com" + card.select_one("a")['href']
-
-            analiz_prompt = f"'{takimlar}' maçı için oran {oran}. Bu maça dair kısa, net ve analitik bir bahis tahmini oluştur."
-            analiz = gpt_analiz(analiz_prompt)
-
-            haberler.append({
-                "mac": takimlar,
-                "oran": oran,
-                "link": link,
-                "analiz": analiz
-            })
-        except Exception as e:
+            yayin_tarihi = datetime(*entry.published_parsed[:6]).date()
+            if yayin_tarihi == bugun:
+                haber = {
+                    "mac": entry.title,
+                    "link": entry.link,
+                    "oran": "Oran bilgisi yok",
+                    "analiz": "AI analizi eklenecek..."
+                }
+                haberler.append(haber)
+        except:
             continue
 
     return haberler
 
-def gpt_analiz(prompt):
-    try:
-        completion = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return completion.choices[0].message.content.strip()
-    except:
-        return "AI analiz yüklenemedi."
-
 def paylas():
     haberler = haberleri_cek()
     if not haberler:
-        print("Haber bulunamadı.")
+        print("⚠️ Haber bulunamadı.")
         return
 
     for h in haberler:
-        mesaj = f"🔎 *{h['mac']}*\n"\
-                f"📉 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n"\
+        mesaj = f"🔎 *{h['mac']}*\n" \
+                f"🧮 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n" \
                 f"*Yorum:* {h['analiz']}"
-
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mesaj, parse_mode="Markdown")
         time.sleep(2)
-
-
-if __name__ == "__main__":
-    print("🚀 Bot başlatıldı...")
-    paylas()
-
-
 
 if __name__ == "__main__":
     print("🚀 Bot başlatıldı...")
