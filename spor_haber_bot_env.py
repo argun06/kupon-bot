@@ -1,25 +1,17 @@
 import os
-import requests
-import time
+import asyncio
 from dotenv import load_dotenv
 from telegram import Bot
 
-# Ortam değişkenlerini yükle
+# Ortam değişkenlerini yükle (.env veya Render ortamı)
 load_dotenv()
 
-# Telegram ayarları
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
-# football-data.org API bilgileri (şimdilik tanımlı, kullanılabilir)
-FOOTBALL_API_TOKEN = os.getenv("FOOTBALL_API_TOKEN")  # .env dosyasına eklersen kullanıma hazır
-
 def get_today_matches():
-    """Bugünkü maçları döndüren örnek fonksiyon (placeholder)."""
-    # Burada API'den veri çekilecek
-    # Şimdilik test amaçlı sahte veri döndürüyoruz
     return [
         {
             "mac": "Galatasaray vs Fenerbahçe",
@@ -29,7 +21,7 @@ def get_today_matches():
         }
     ]
 
-def paylas():
+async def paylas():
     haberler = get_today_matches()
 
     if not haberler:
@@ -42,11 +34,12 @@ def paylas():
             f"📊 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n"
             f"🧠 *Yorum:* {h['analiz']}"
         )
-        bot.send_message(chat_id=CHAT_ID, text=mesaj, parse_mode="Markdown")
-        time.sleep(2)
+        await bot.send_message(chat_id=CHAT_ID, text=mesaj, parse_mode="Markdown")
+        await asyncio.sleep(2)
 
 if __name__ == "__main__":
     print("🚀 Bot başlatıldı...")
-    paylas()
+    asyncio.run(paylas())
+
 
 
