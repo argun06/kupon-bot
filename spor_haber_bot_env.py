@@ -65,11 +65,12 @@ def paylas():
         return
 
     for h in haberler:
-        mesaj = f"📢 *{h['mac']}*\n
-💸 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n
-🧠 *Yorum:* {h['analiz']}"
-        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mesaj, parse_mode="Markdown")
-        time.sleep(2)
+    mesaj = f"🔎 *{h['mac']}*\n" \
+            f"📉 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n" \
+            f"*Yorum:* {h['analiz']}"
+    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mesaj, parse_mode="Markdown")
+    time.sleep(2)
+
 
 if __name__ == "__main__":
     print("🚀 Bot başlatıldı...")
