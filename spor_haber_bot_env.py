@@ -50,7 +50,8 @@ def analiz_uret(match):
 
     mesaj = f"\n\n📅 *{tarih}*\n"
 
-🏟️ *{home}* vs *{away}*\n\n{analiz}"
+mesaj += f"🏟️ *{home}* vs *{away}*\n\n{analiz}\n"
+
     return mesaj
 
 # Telegram'a gönder
