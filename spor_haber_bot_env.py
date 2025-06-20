@@ -1,87 +1,82 @@
-import os
 import requests
-import datetime
 import time
-import asyncio
+import datetime
+import os
 import openai
-from telegram import Bot
-from dotenv import load_dotenv
+import telegram
+from apscheduler.schedulers.blocking import BlockingScheduler
 
-load_dotenv()
-
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Ortam değişkenlerini yükle
+FOOTBALL_DATA_API = os.getenv("FOOTBALL_DATA_API")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-FOOTBALL_API_KEY = os.getenv("FOOTBALL_DATA_API")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 openai.api_key = OPENAI_API_KEY
-bot = Bot(token=TELEGRAM_TOKEN)
 
+HEADERS = {"X-Auth-Token": FOOTBALL_DATA_API}
+API_URL = "https://api.football-data.org/v4/matches?dateFrom={}&dateTo={}"
+
+# Tarihi al
 def get_today_matches():
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    url = f"https://api.football-data.org/v4/matches?dateFrom={today}&dateTo={today}"
-    headers = {"X-Auth-Token": FOOTBALL_API_KEY}
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json().get("matches", [])
-    else:
-        print("API Hatası:", response.status_code, response.text)
+    today = datetime.date.today()
+    url = API_URL.format(today, today)
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code != 200:
+        print("API Hatası:", response.status_code)
         return []
+    data = response.json()
+    return data.get("matches", [])
 
-def generate_prompt(match):
-    home = match["homeTeam"]["name"]
-    away = match["awayTeam"]["name"]
-    return (
-        f"{home} vs {away} maçını analiz et.\n"
-        f"- Takımların son form durumu\n"
-        f"- Tahmini skor\n"
-        f"- Kazanma yüzdesi\n"
-        f"- Varsa oran bilgisi\n"
-        f"- AI uzman yorumu şeklinde detaylı analiz yap. Türkçe yaz."
-    )
+# AI analiz fonksiyonu
+def analiz_uret(match):
+    home = match['homeTeam']['name']
+    away = match['awayTeam']['name']
+    tarih = match['utcDate'][:10]
+    prompt = f"Bugün oynanacak {home} - {away} maçını analiz et. Form durumlarını değerlendir, olası skor tahmini yap, kazanma yüzdesini belirt, varsa oran bilgisi ver ve uzman gibi kısa net bir yorum yap."
 
-def get_ai_analysis(prompt):
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
+        completion = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Sen bir futbol analiz uzmanısın."},
+                {"role": "user", "content": prompt}
+            ]
         )
-        return response['choices'][0]['message']['content']
+        analiz = completion.choices[0].message.content
     except Exception as e:
-        print("OpenAI Hatası:", e)
-        return "AI analiz alınamadı."
+        analiz = f"AI analizi alınamadı: {e}"
 
-async def paylaş():
-    print("🚀 Bot başlatıldı...")
+    mesaj = f"\n\n📅 *{tarih}*
+🏟️ *{home}* vs *{away}*\n\n{analiz}"
+    return mesaj
+
+# Telegram'a gönder
+def gonder_telegram(mesaj):
+    try:
+        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mesaj, parse_mode=telegram.constants.ParseMode.MARKDOWN)
+    except Exception as e:
+        print("Telegram gönderim hatası:", e)
+
+# Ana fonksiyon
+def gune_ozel_analiz():
+    print("🔄 Maçlar alınıyor...")
     matches = get_today_matches()
-    if not matches:
-        print("⚠️ Bugün maç bulunamadı.")
-        return
+    print(f"Toplam maç sayısı: {len(matches)}")
+    for i, match in enumerate(matches):
+        mesaj = analiz_uret(match)
+        gonder_telegram(mesaj)
+        print(f"✅ {i+1}/{len(matches)} gönderildi")
+        time.sleep(300)  # 5 dakika bekle (test için)
 
-    for idx, match in enumerate(matches):
-        home = match["homeTeam"]["name"]
-        away = match["awayTeam"]["name"]
-        match_time = match.get("utcDate", "")[:16].replace("T", " ")
-        prompt = generate_prompt(match)
-        analiz = get_ai_analysis(prompt)
-        mesaj = (
-            f"*{home} vs {away}*\n"
-            f"🕒 Maç Saati: `{match_time}`\n"
-            f"🧠 *Yorum:*\n{analiz}"
-        )
+# Zamanlayıcı kur
+scheduler = BlockingScheduler()
+scheduler.add_job(gune_ozel_analiz, 'cron', hour=8, minute=0)
 
-        try:
-            await bot.send_message(chat_id=CHAT_ID, text=mesaj, parse_mode="Markdown")
-            print(f"✅ {home} vs {away} paylaşıldı.")
-        except Exception as e:
-            print(f"Telegram Hatası: {e}")
+print("⏳ Günlük analiz botu çalışıyor...")
+scheduler.start()
 
-        await asyncio.sleep(300)  # 5 dakika bekle (test için)
-
-if __name__ == "__main__":
-    asyncio.run(paylaş())
 
 
 
