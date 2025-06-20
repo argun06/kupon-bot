@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 def haberleri_cek():
-    url = "https://www.fotomac.com.tr/rss/sondakika"
+    url = "https://www.fotomac.com.tr/rss/spor"  # GÜNLÜK spor haberleri
     feed = feedparser.parse(url)
 
     bugun = datetime.now().date()
@@ -25,8 +25,8 @@ def haberleri_cek():
                 haber = {
                     "mac": entry.title,
                     "link": entry.link,
-                    "oran": "Tahmin bilgisi eklenmedi.",
-                    "analiz": "AI yorumları test ediliyor..."
+                    "oran": "Oran verisi yok",
+                    "analiz": "Bu haber AI tarafından yorumlanacaktır."
                 }
                 haberler.append(haber)
         except:
@@ -37,16 +37,17 @@ def haberleri_cek():
 def paylas():
     haberler = haberleri_cek()
     if not haberler:
-        print("⚠️ Haber bulunamadı.")
+        print("⚠️ Bugüne ait haber bulunamadı.")
         return
 
     for h in haberler:
         mesaj = f"🔎 *{h['mac']}*\n" \
-                f"🧮 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n" \
-                f"*Yorum:* {h['analiz']}"
+                f"📊 Oran: `{h['oran']}`\n🔗 [Detay]({h['link']})\n" \
+                f"*🧠 Yorum:* {h['analiz']}"
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mesaj, parse_mode="Markdown")
         time.sleep(2)
 
 if __name__ == "__main__":
     print("🚀 Bot başlatıldı...")
     paylas()
+
