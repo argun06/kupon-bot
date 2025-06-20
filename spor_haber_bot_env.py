@@ -9,10 +9,6 @@ headers = {
 
 response = requests.get(url, headers=headers)
 
-if response.status_code == 200:
-    data = response.json()
-    print("✅ Veri başarıyla alındı")
-    print(data)
-else:
-    print(f"❌ Hata oluştu: {response.status_code}")
+print("Durum Kodu:", response.status_code)
+print("Cevap:", response.text)
 
