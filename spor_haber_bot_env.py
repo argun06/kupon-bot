@@ -1,104 +1,95 @@
 import os
-import requests
 import time
+import requests
 from datetime import datetime
-from telegram import Bot
 from dotenv import load_dotenv
+import openai
 
-# Ortam değişkenlerini yükle
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-FOOTBALL_DATA_API = os.getenv("FOOTBALL_DATA_API")
+# ─── 1. LOAD YOUR ENVIRONMENT VARIABLES ────────────────────────────────────────
+load_dotenv()  # if you have a local .env for testing
 
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+TELEGRAM_BOT_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID     = os.getenv("TELEGRAM_CHAT_ID")
+OPENAI_API_KEY       = os.getenv("OPENAI_API_KEY")
+FOOTBALL_DATA_API    = os.getenv("FOOTBALL_DATA_API")  # your football-data.org token
 
-def get_today_matches():
-    url = "https://api.football-data.org/v4/matches"
-    headers = {
-        "X-Auth-Token": FOOTBALL_DATA_API
-    }
-    params = {
-        "dateFrom": datetime.today().strftime('%Y-%m-%d'),
-        "dateTo": datetime.today().strftime('%Y-%m-%d')
-    }
-    response = requests.get(url, headers=headers, params=params)
+if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, FOOTBALL_DATA_API]):
+    raise RuntimeError("One or more required env vars are missing.")
 
-    if response.status_code == 200:
-        data = response.json()
-        return data.get("matches", [])
-    else:
-        print("API Hatası:", response.status_code, response.text)
-        return []
+openai.api_key = OPENAI_API_KEY
 
-def analyze_match(match):
-    home = match['homeTeam']['name']
-    away = match['awayTeam']['name']
-    match_info = f"{home} vs {away}"
+# ─── 2. FUNCTIONS ───────────────────────────────────────────────────────────────
 
-    prompt = f"""
-    Aşağıda verilen futbol maçı için profesyonel bir yorumcu gibi analiz yap:
+def fetch_today_matches():
+    """Fetch today's football matches from football-data.org."""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    url = f"https://api.football-data.org/v2/matches?dateFrom={today}&dateTo={today}"
+    headers = { "X-Auth-Token": FOOTBALL_DATA_API }
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    data = resp.json().get("matches", [])
+    matches = []
+    for m in data:
+        home = m["homeTeam"]["name"]
+        away = m["awayTeam"]["name"]
+        matches.append({
+            "home": home,
+            "away": away,
+        })
+    return matches
 
-    Maç: {home} vs {away}
-    
-    1. Takımlıların son form durumu
-    2. Beklenen skor tahmini
-    3. Kazanma yüzdeleri (tahmini)
-    4. Genel değerlendirme ve yorum
+def gpt_analysis(home, away):
+    """Ask GPT for an expert analysis of this matchup."""
+    prompt = (
+        f"Sen bir futbol yorumcususun. Oyun öncesi analiz yap:\n\n"
+        f"Maç: {home} vs {away}\n"
+        f"İstatistikleri ve oranları göz önünde bulundurarak, takımların ",
+        "son form durumunu, tahmini skoru ve kazanma yüzdesini kısaca açıkla."
+    )
+    try:
+        res = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return res.choices[0].message.content.strip()
+    except Exception:
+        return "Analiz alınamadı."
 
-    Kısa, net ve anlaşılır yaz. Tahminlerinde iddialı ol.
-    """
+def send_telegram(text):
+    """Send a message to the configured Telegram chat."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
+    r = requests.post(url, data=data, timeout=10)
+    return r.status_code
 
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": prompt}]
-    }
-
-    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
-
-    if response.status_code == 200:
-        content = response.json()['choices'][0]['message']['content']
-        return content
-    else:
-        return "AI analiz yüklenemedi."
-
-def analiz_mesaj_olustur(analiz, home, away, tarih):
-    mesaj = f"""
-📅 *{tarih}*
-🏟️ *{home}* vs *{away}*
-
-{analiz}
-"""
-    return mesaj
-
-def gonder():
-    matches = get_today_matches()
-
+def run_cycle():
+    print("🚀 Başlıyor:", datetime.utcnow().isoformat(), "UTC")
+    matches = fetch_today_matches()
     if not matches:
-        print("Bugün maç bulunamadı.")
+        print("⚠️ Bugün maç yok.")
         return
 
-    print("Analizler başlıyor...")
+    for m in matches:
+        home = m["home"]
+        away = m["away"]
+        analysis = gpt_analysis(home, away)
+        message = (
+            f"*{home}* vs *{away}*\n\n"
+            f"🧠 *Analiz:*\n{analysis}"
+        )
+        print("📤 Gönderiliyor:", home, "vs", away)
+        send_telegram(message)
+        time.sleep(2)
 
-    for match in matches[:5]:  # Test için sadece ilk 5 maça analiz
-        home = match['homeTeam']['name']
-        away = match['awayTeam']['name']
-        tarih = match['utcDate'].split("T")[0]
-
-        analiz = analyze_match(match)
-        mesaj = analiz_mesaj_olustur(analiz, home, away, tarih)
-
-        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mesaj, parse_mode="Markdown")
-        time.sleep(10)
-
+# ─── 3. MAIN LOOP ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("🚀 Bot başlatıldı...")
-    gonder()
+    while True:
+        try:
+            run_cycle()
+        except Exception as e:
+            print("‼️ Hata:", e)
+        # Test için 5 dakikada bir; daha sonra 3600 (1 saat) yapabilirsiniz
+        time.sleep(5 * 60)
 
 
 
